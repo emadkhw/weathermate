@@ -1,0 +1,124 @@
+import streamlit as st
+import pandas as pd
+import numpy as np
+import requests
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
+from sklearn.ensemble import GradientBoostingRegressor, GradientBoostingClassifier
+from sklearn.metrics import mean_squared_error, accuracy_score
+from datetime import datetime, timedelta
+import pytz
+
+# إعداد API ومصدر البيانات
+API_KEY = '79033c69fa19e77d1d9fea1ad0e26726'
+BASE_URL = 'https://api.openweathermap.org/data/2.5/'
+
+# وظائف لجلب البيانات ومعالجتها
+def get_current_weather(city):
+    url = f"{BASE_URL}weather?q={city}&appid={API_KEY}&units=metric"
+    response = requests.get(url)
+    data = response.json()
+    return {
+        'city': data['name'],
+        'current_temp': round(data['main']['temp']),
+        'feels_like': round(data['main']['feels_like']),
+        'temp_min': round(data['main']['temp_min']),
+        'temp_max': round(data['main']['temp_max']),
+        'humidity': round(data['main']['humidity']),
+        'description': data['weather'][0]['description'],
+        'country': data['sys']['country'],
+        'wind_gust_dir': data['wind']['deg'],
+        'pressure': data['main']['pressure'],
+        'wind_gust_speed': data['wind']['speed']
+    }
+
+def get_multiple_cities_weather(cities):
+    city_data = []
+    for city in cities:
+        try:
+            weather = get_current_weather(city)
+            city_data.append({
+                'city': weather['city'],
+                'country': weather['country'],
+                'temp': weather['current_temp']
+            })
+        except Exception:
+            continue
+    return city_data
+
+# وظيفة لتوصيات الملابس بناءً على درجة الحرارة
+def clothing_recommendation(temp):
+    if temp <= 10:
+        return "🧥 ارتدِ ملابس شتوية ثقيلة مثل جاكيت ومعطف."
+    elif 10 < temp <= 20:
+        return "🧣 ارتدِ ملابس خريفية مثل سترة خفيفة."
+    elif 20 < temp <= 30:
+        return "👕 ارتدِ ملابس صيفية خفيفة مثل تيشيرت وقميص."
+    else:
+        return "🌞 ارتدِ ملابس خفيفة جدًا واشرب الكثير من الماء."
+
+# وظيفة لتوصيات السفر بناءً على الطقس
+def travel_recommendations(temp):
+    if temp <= 10:
+        return ["سويسرا 🇨🇭", "النرويج 🇳🇴", "آيسلندا 🇮🇸"]
+    elif 10 < temp <= 20:
+        return ["إيطاليا 🇮🇹", "فرنسا 🇫🇷", "اليونان 🇬🇷"]
+    elif 20 < temp <= 30:
+        return ["إسبانيا 🇪🇸", "تركيا 🇹🇷", "البرتغال 🇵🇹"]
+    else:
+        return ["إندونيسيا 🇮🇩", "تايلاند 🇹🇭", "المكسيك 🇲🇽"]
+
+# واجهة المستخدم باستخدام Streamlit
+st.set_page_config(page_title="تطبيق توقعات الطقس الاحترافي", layout="wide")
+st.title("🌤️ تطبيق احترافي لتوقعات الطقس")
+
+# إدخال البيانات من المستخدم
+st.sidebar.header("⚙️ إعدادات التطبيق")
+city = st.sidebar.text_input("🌍 أدخل اسم المدينة", "London")
+st.sidebar.markdown("---")
+st.sidebar.info("👈 أدخل المدينة لتحليل الطقس")
+
+if city:
+    st.subheader(f"🌆 الطقس الحالي في {city}")
+    try:
+        current_weather = get_current_weather(city)
+
+        st.metric(label="🌍 المدينة", value=f"{current_weather['city']}, {current_weather['country']}")
+        col1, col2, col3 = st.columns(3)
+        col1.metric("🌡️ درجة الحرارة الحالية", f"{current_weather['current_temp']}°C")
+        col2.metric("💨 تشعر كأنها", f"{current_weather['feels_like']}°C")
+        col3.metric("💧 الرطوبة", f"{current_weather['humidity']}%")
+
+        st.write(f"📝 **الوصف**: {current_weather['description']}")
+        st.write(f"🌬️ **سرعة الرياح**: {current_weather['wind_gust_speed']} m/s")
+        st.write(f"🧭 **اتجاه الرياح**: {current_weather['wind_gust_dir']}°")
+
+        # عرض توصيات الملابس
+        st.subheader("👕 توصيات الملابس")
+        recommendation = clothing_recommendation(current_weather['current_temp'])
+        st.write(recommendation)
+
+        # عرض توصيات السفر
+        st.subheader("✈️ أفضل البلدان للسفر")
+        travel_countries = travel_recommendations(current_weather['current_temp'])
+        st.write(f"🌍 بناءً على الطقس الحالي، ننصحك بالسفر إلى: {', '.join(travel_countries)}")
+
+        # عرض أبرد وأعلى 5 مناطق
+        cities_list = ["Moscow", "Reykjavik", "Helsinki", "Oslo", "Stockholm", "Dubai", "Riyadh", "Cairo", "New York", "Tokyo", "Delhi", "Sydney", "Cape Town", "Buenos Aires", "Jakarta"]
+        city_weather_data = get_multiple_cities_weather(cities_list)
+        sorted_data = sorted(city_weather_data, key=lambda x: x['temp'])
+
+        st.subheader("❄️ أبرد 5 مدن في العالم")
+        coldest_cities = sorted_data[:5]
+        for city in coldest_cities:
+            st.write(f"🌍 {city['city']}, {city['country']} - 🌡️ {city['temp']}°C")
+
+        st.subheader("🔥 أعلى 5 مدن حرارة في العالم")
+        hottest_cities = sorted_data[-5:][::-1]
+        for city in hottest_cities:
+            st.write(f"🌍 {city['city']}, {city['country']} - 🌡️ {city['temp']}°C")
+
+    except Exception as e:
+        st.error(f"❌ حدث خطأ أثناء جلب البيانات: {e}")
+else:
+    st.info("ℹ️ يرجى إدخال اسم المدينة لعرض الطقس الحالي.")
